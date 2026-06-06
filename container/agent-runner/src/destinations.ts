@@ -79,11 +79,27 @@ export function findByRouting(
  * per-agent-group and changes when the operator renames an agent, while
  * the shared base is identical across all agents.
  */
-export function buildSystemPromptAddendum(assistantName?: string): string {
+export function buildSystemPromptAddendum(
+  assistantName?: string,
+  version?: string,
+  commit?: string,
+): string {
   const sections: string[] = [];
 
   if (assistantName) {
     sections.push(['# You are ' + assistantName, '', `Your name is **${assistantName}**. Use it when the channel asks who you are, when introducing yourself, and when signing any message that explicitly calls for a signature.`].join('\n'));
+  }
+
+  if (version || commit) {
+    const v = version ? `v${version}` : 'unknown version';
+    const c = commit ? ` (commit \`${commit.slice(0, 7)}\`)` : '';
+    sections.push(
+      [
+        '# Running version',
+        '',
+        `You are running NanoClaw ${v}${c}. If asked which version, build, or commit you're running, report this exactly. This reflects the code currently live on the host, updated on each self-deploy.`,
+      ].join('\n'),
+    );
   }
 
   sections.push(buildDestinationsSection());

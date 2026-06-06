@@ -14,7 +14,8 @@ You can modify your own environment. Different kinds of changes have different w
 - **`CLAUDE.local.md` or files in your workspace** → Edit directly, no approval needed. Your workspace (`/workspace/agent/`) is persisted on the host. (Note: the composed `CLAUDE.md` itself is read-only and regenerated every spawn — write to `CLAUDE.local.md` instead.)
 - **System package (apt) or global npm package** → `install_packages`. Requires admin approval. On approval, image rebuild + container restart happen automatically.
 - **MCP server** → `add_mcp_server`. Requires admin approval. On approval, container restarts with the new server wired up (no rebuild — bun runs TS directly).
-- **Your source code or Dockerfile** → Delegate to a builder agent via `create_agent` (see below).
+- **Your source code or Dockerfile (durable change)** → Use the **`self-pr`** skill: edit a clone of your source, open a GitHub PR, and let the operator review + merge. After merge, the host auto-deploys with automatic rollback. This is the preferred path — it gives the operator a reviewable boundary and CI tests before anything goes live.
+- **Your source code (quick experiment, no review needed)** → Delegate to a builder agent via `create_agent` (see below). Edits inside `/app/src` are picked up on the next container start. Prefer `self-pr` for anything you want to keep.
 - **A new specialist capability** → `create_agent` to spin up a dedicated agent for it.
 
 ## Workflow: Code Changes via Builder Agent

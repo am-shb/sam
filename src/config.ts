@@ -39,6 +39,22 @@ export const MAX_MESSAGES_PER_PROMPT = Math.max(1, parseInt(process.env.MAX_MESS
 export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min default — how long to keep container alive after last result
 export const MAX_CONCURRENT_CONTAINERS = Math.max(1, parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5);
 
+// ---- Self-deploy (agent-authored PRs → merge webhook → safe restart) --------
+// When enabled, a GitHub webhook (delivered through the operator's Cloudflare
+// tunnel) on a merge to SELF_DEPLOY_BRANCH triggers scripts/self-deploy.sh,
+// which pulls, builds, and restarts the host with automatic rollback on
+// failure. See docs/self-deploy.md. GITHUB_WEBHOOK_SECRET is read inside the
+// webhook module (src/self-deploy/github-webhook.ts), not exported here, to
+// keep the HMAC secret out of broad reach.
+const selfDeployEnv = readEnvFile(['SELF_DEPLOY_ENABLED', 'SELF_DEPLOY_BRANCH', 'SELF_DEPLOY_HEALTH_TIMEOUT_MS']);
+export const SELF_DEPLOY_ENABLED = (process.env.SELF_DEPLOY_ENABLED || selfDeployEnv.SELF_DEPLOY_ENABLED) === 'true';
+export const SELF_DEPLOY_BRANCH = process.env.SELF_DEPLOY_BRANCH || selfDeployEnv.SELF_DEPLOY_BRANCH || 'main';
+export const SELF_DEPLOY_HEALTH_TIMEOUT_MS = Math.max(
+  30000,
+  parseInt(process.env.SELF_DEPLOY_HEALTH_TIMEOUT_MS || selfDeployEnv.SELF_DEPLOY_HEALTH_TIMEOUT_MS || '120000', 10) ||
+    120000,
+);
+
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

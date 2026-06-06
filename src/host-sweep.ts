@@ -43,6 +43,7 @@ import {
   type ContainerState,
 } from './db/session-db.js';
 import { log } from './log.js';
+import { drainDeployResult } from './self-deploy/lifecycle.js';
 import { openInboundDb, openOutboundDb, openOutboundDbRw, inboundDbPath, heartbeatPath } from './session-manager.js';
 import { isContainerRunning, killContainer, wakeContainer } from './container-runner.js';
 import type { Session } from './types.js';
@@ -139,6 +140,16 @@ async function sweep(): Promise<void> {
     }
   } catch (err) {
     log.error('Host sweep error', { err });
+  }
+
+  // Deliver any self-deploy result the detached orchestrator left behind. Done
+  // here (not just at boot) so the SUCCESS notification reaches the already-
+  // running new host — which boots and drains BEFORE the orchestrator confirms
+  // health and writes the result. No-op when there's nothing to drain.
+  try {
+    drainDeployResult();
+  } catch (err) {
+    log.error('Deploy result drain error', { err });
   }
 
   setTimeout(sweep, SWEEP_INTERVAL_MS);

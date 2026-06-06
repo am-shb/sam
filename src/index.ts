@@ -7,7 +7,7 @@
 import path from 'path';
 
 import { backfillContainerConfigs } from './backfill-container-configs.js';
-import { DATA_DIR } from './config.js';
+import { DATA_DIR, SELF_DEPLOY_ENABLED } from './config.js';
 import { enforceStartupBackoff, resetCircuitBreaker } from './circuit-breaker.js';
 import { migrateGroupsToClaudeLocal } from './claude-md-compose.js';
 import { initDb } from './db/connection.js';
@@ -62,6 +62,9 @@ import { startCliServer, stopCliServer } from './cli/socket-server.js';
 
 import type { ChannelAdapter, ChannelSetup } from './channels/adapter.js';
 import { initChannelAdapters, teardownChannelAdapters, getChannelAdapter } from './channels/channel-registry.js';
+import { registerSelfDeployWebhook } from './self-deploy/github-webhook.js';
+import { drainDeployResult, writeReadyMarker } from './self-deploy/lifecycle.js';
+import { stopWebhookServer } from './webhook-server.js';
 
 async function main(): Promise<void> {
   log.info('NanoClaw starting');
@@ -177,7 +180,18 @@ async function main(): Promise<void> {
   // 7. Start the `ncl` CLI socket server (data/ncl.sock).
   await startCliServer();
 
+  // 8. Self-deploy — expose the GitHub merge webhook (behind a flag) and
+  // report the outcome of any deploy that triggered this restart.
+  if (SELF_DEPLOY_ENABLED) {
+    registerSelfDeployWebhook();
+  }
+  drainDeployResult();
+
   log.info('NanoClaw running');
+
+  // 9. Readiness marker — the detached self-deploy orchestrator polls this to
+  // confirm the new code booted healthy (a boot crash never reaches here).
+  writeReadyMarker();
 }
 
 /** Graceful shutdown. */
@@ -193,6 +207,7 @@ async function shutdown(signal: string): Promise<void> {
   stopDeliveryPolls();
   stopHostSweep();
   await stopCliServer();
+  await stopWebhookServer();
   try {
     await teardownChannelAdapters();
   } finally {
