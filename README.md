@@ -1,61 +1,47 @@
 # Sam
 
-A customized fork of [NanoClaw](https://nanoclaw.dev) — an AI assistant that runs agents in Docker containers with strong isolation and security.
+Sam is a personal AI agent built on [NanoClaw](https://nanoclaw.dev) — a lightweight, container-isolated Claude assistant framework. This repo is Amir's fork.
 
-## What is Sam?
+---
 
-Sam is a Claude-powered assistant deployed on your infrastructure. It can:
-- **Respond on Telegram & custom channels** (via Telegram adapter)
-- **Access your Home Assistant** for home automation
-- **Interact with Cloudflare** for DNS and security
-- **Generate images** using Stable Diffusion
-- **Transcribe voice** via Deepgram
-- **Create pull requests** to update documentation and code
+## What is NanoClaw?
 
-## Key customizations over NanoClaw
+NanoClaw runs Claude agents in isolated Linux containers. Each agent has its own workspace, persistent memory, and filesystem. Outbound API calls route through an OneCLI credential vault so no secrets live in the container or in chat.
 
-- **Telegram adapter** — native Telegram integration for direct messaging
-- **Self-PR skill** — Sam can create and manage pull requests autonomously (like the README you're reading now)
+The codebase is small by design — one host process, no microservices. Customization happens through code, not config: fork it and have Claude modify it to fit your needs.
 
-## Quick start
+Full docs: [nanoclaw.dev](https://nanoclaw.dev) · [docs.nanoclaw.dev](https://docs.nanoclaw.dev)
 
-```bash
-git clone https://github.com/am-shb/sam.git
-cd sam
-bash nanoclaw.sh
-```
+---
 
-The installer walks you through setup: Node, pnpm, Docker, OneCLI credentials, and agent container build.
+## Sam
 
-## Architecture
+Sam is the agent running in this fork. It talks to Amir over Telegram, has persistent memory across sessions, and can interact with external services and home infrastructure.
 
-```
-messaging apps → router → inbound.db → agent container → outbound.db → delivery → messaging apps
-```
+**Personality:** Direct, sarcastic, occasionally flirtatious. Matches your language (English or Farsi) and mirrors your energy.
 
-A single host process orchestrates per-session containers. Agents run isolated in Docker with only explicitly mounted directories visible. Credentials never reach the container — requests route through [OneCLI's Agent Vault](https://github.com/onecli/onecli).
+---
+
+## Customizations vs. Upstream NanoClaw
+
+### Telegram Channel Adapter
+
+Native Telegram integration (`src/channels/telegram.ts`) with message routing, voice message handling, reply threading, and Markdown sanitization.
+
+### Self-PR Skill
+
+A skill that lets Sam propose source-level changes to this repo via GitHub pull requests. On merge, the host auto-deploys with rollback if the build fails.
+
+---
 
 ## Requirements
 
-- macOS or Linux (Windows via WSL2)
-- Node.js 20+ and pnpm 10+ (installer provides these)
-- [Docker Desktop](https://docker.com/products/docker-desktop) or Docker Engine
-- [Claude Code](https://claude.ai/download) for `/customize` and skill installation
+- Linux (Raspberry Pi 5 or any Linux host)
+- Docker, Node.js 20+, pnpm 10+
+- [Claude Code](https://claude.ai/download)
 
-## Philosophy
-
-**Small enough to understand.** One process, a few source files, no microservices.
-
-**Secure by isolation.** Agents run in containers and only see explicitly mounted directories.
-
-**Designed for you.** Customize the code directly — the codebase is small enough that changes are safe.
-
-## Learn more
-
-- [NanoClaw docs](https://docs.nanoclaw.dev) — full documentation
-- [NanoClaw GitHub](https://github.com/nanocoai/nanoclaw) — upstream project
-- [Architecture details](docs/architecture.md)
+---
 
 ## License
 
-MIT
+MIT — same as upstream NanoClaw.
