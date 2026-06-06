@@ -11,6 +11,7 @@ import { createMessagingGroup, getMessagingGroupByPlatform, updateMessagingGroup
 import { grantRole, hasAnyOwner } from '../modules/permissions/db/user-roles.js';
 import { upsertUser } from '../modules/permissions/db/users.js';
 import { createChatSdkBridge, type ReplyContext } from './chat-sdk-bridge.js';
+import type { ForwardContextExtractor } from './chat-sdk-bridge.js';
 import { sanitizeTelegramLegacyMarkdown } from './telegram-markdown-sanitize.js';
 import { registerChannelAdapter } from './channel-registry.js';
 import type { ChannelAdapter, ChannelSetup, InboundMessage } from './adapter.js';
@@ -37,6 +38,39 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 5
   }
   throw lastErr;
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const extractForwardContext: ForwardContextExtractor = (raw: Record<string, any>): string | null => {
+  // Bot API 7.0+ forward_origin covers all forward types
+  if (raw.forward_origin) {
+    const origin = raw.forward_origin as Record<string, any>;
+    if (origin.type === 'user' && origin.sender_user) {
+      const u = origin.sender_user as Record<string, string>;
+      const name = [u.first_name, u.last_name].filter(Boolean).join(' ');
+      const handle = u.username ? ` (@${u.username})` : '';
+      return `[Forwarded from: ${name}${handle}]`;
+    }
+    if ((origin.type === 'channel' || origin.type === 'chat') && origin.chat) {
+      const ch = origin.chat as Record<string, string>;
+      return `[Forwarded from channel: ${ch.title ?? 'Unknown Channel'}]`;
+    }
+    if (origin.type === 'hidden_user' && origin.sender_user_name) {
+      return `[Forwarded from: ${origin.sender_user_name as string} (account hidden)]`;
+    }
+  }
+  // Fallback for older Bot API versions
+  if (raw.forward_from) {
+    const u = raw.forward_from as Record<string, string>;
+    const name = [u.first_name, u.last_name].filter(Boolean).join(' ');
+    const handle = u.username ? ` (@${u.username})` : '';
+    return `[Forwarded from: ${name}${handle}]`;
+  }
+  if (raw.forward_from_chat) {
+    const ch = raw.forward_from_chat as Record<string, string>;
+    return `[Forwarded from channel: ${ch.title ?? 'Unknown Channel'}]`;
+  }
+  return null;
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function extractReplyContext(raw: Record<string, any>): ReplyContext | null {
@@ -208,6 +242,7 @@ registerChannelAdapter('telegram', {
       adapter: telegramAdapter,
       concurrency: 'concurrent',
       extractReplyContext,
+      extractForwardContext,
       supportsThreads: false,
       transformOutboundText: sanitizeTelegramLegacyMarkdown,
       maxTextLength: 4000,
