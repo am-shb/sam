@@ -26,7 +26,7 @@ const READY_MARKER = path.join(DATA_DIR, '.host-ready');
 const DEPLOY_RESULT = path.join(DATA_DIR, '.deploy-result.json');
 
 interface DeployResult {
-  status: 'success' | 'rollback' | 'failed';
+  status: 'success' | 'rollback' | 'failed' | 'noop';
   from?: string;
   to?: string;
   error?: string;
@@ -82,6 +82,9 @@ function resultMessage(r: DeployResult): string {
   if (r.status === 'rollback') {
     return `↩️ Self-deploy of ${to} FAILED and was rolled back to ${from} — I'm running the previous known-good version. Reason: ${r.error || 'unknown'}. Tell the user the update didn't apply and why, so they can fix the PR and re-merge.`;
   }
+  if (r.status === 'noop') {
+    return `ℹ️ Self-deploy was triggered but there was nothing to deploy — already running the latest (${to}). ${r.error ? `(${r.error}) ` : ''}Briefly let the user know no change was needed.`;
+  }
   return `⚠️ Self-deploy did not complete: ${r.error || 'unknown error'}. Tell the user to check logs/self-deploy.log.`;
 }
 
@@ -109,7 +112,13 @@ export function notifyOwners(text: string): number {
         channelType: 'agent',
         threadId: null,
         content: JSON.stringify({ text, sender: 'system', senderId: 'system' }),
-        onWake: 1,
+        // on_wake=0: a live notification must be read by an already-running
+        // container on its next poll. on_wake=1 is only read on a *fresh*
+        // container's first poll, so a running container would strand it.
+        // Fresh containers read on_wake=0 on first poll too (the filter is
+        // `on_wake = 0 OR isFirstPoll`), so this is correct for both the
+        // startup drain and the live webhook notification.
+        onWake: 0,
       });
       const fresh = getSession(session.id);
       if (fresh) wakeContainer(fresh);

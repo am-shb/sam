@@ -142,6 +142,7 @@ fi
 TARGET="$(git rev-parse "origin/$BRANCH")"
 if [ "$TARGET" = "$LAST_GOOD" ]; then
   log "already up to date ($TARGET) — nothing to deploy"
+  write_result noop "$LAST_GOOD" "$TARGET" "already up to date; nothing to deploy"
   exit 0
 fi
 
