@@ -45,6 +45,14 @@ export interface ReplyContext {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ReplyContextExtractor = (raw: Record<string, any>) => ReplyContext | null;
 
+/**
+ * Extract forward context from a platform-specific raw message.
+ * Return a string to prepend to the message text (e.g. "[Forwarded from: John]"),
+ * or null if the message was not forwarded.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ForwardContextExtractor = (raw: Record<string, any>) => string | null;
+
 export interface ChatSdkBridgeConfig {
   adapter: Adapter;
   concurrency?: ConcurrencyStrategy;
@@ -52,6 +60,8 @@ export interface ChatSdkBridgeConfig {
   botToken?: string;
   /** Platform-specific reply context extraction. */
   extractReplyContext?: ReplyContextExtractor;
+  /** Platform-specific forward context extraction. Return a label to prepend to the message text. */
+  extractForwardContext?: ForwardContextExtractor;
   /**
    * Whether this platform uses threads as the primary conversation unit.
    * See `ChannelAdapter.supportsThreads`. Declared by the calling channel
@@ -166,6 +176,16 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const replyTo = config.extractReplyContext(message.raw as Record<string, any>);
       if (replyTo) serialized.replyTo = replyTo;
+    }
+
+    // Prepend forward attribution via platform-specific hook
+    if (config.extractForwardContext && message.raw) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const forwardLine = config.extractForwardContext(message.raw as Record<string, any>);
+      if (forwardLine) {
+        const currentText = serialized.text as string | undefined;
+        serialized.text = currentText ? `${forwardLine}\n${currentText}` : forwardLine;
+      }
     }
 
     // Project chat-sdk's nested author into the flat sender fields the router
