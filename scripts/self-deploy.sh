@@ -111,12 +111,40 @@ if ! pnpm exec tsx scripts/backup-db.ts "$DATA_DIR/v2.db" "$BACKUP_DIR/v2.db"; t
 fi
 log "DB snapshot → $BACKUP_DIR/v2.db"
 
+# Atomically restore the pre-deploy DB snapshot. A naive `cp -f snap v2.db`
+# truncates the live DB *before* writing, so a mid-copy failure (e.g. ENOSPC)
+# leaves an empty v2.db and — with the WAL then deleted — destroys a database
+# the failed deploy had never even touched. Instead copy to a temp file on the
+# same filesystem and rename into place; only drop the stale WAL/SHM once the
+# swap has succeeded. On any failure, leave the live DB exactly as it was.
+restore_db_snapshot() {
+  local snap="$BACKUP_DIR/v2.db" tmp="$DATA_DIR/v2.db.rollback.tmp"
+  if [ ! -s "$snap" ]; then
+    log "rollback: DB snapshot missing/empty ($snap) — leaving live DB untouched"
+    return 1
+  fi
+  rm -f "$tmp"
+  if ! cp -f "$snap" "$tmp"; then
+    log "rollback: DB snapshot copy failed (disk full?) — leaving live DB untouched"
+    rm -f "$tmp"
+    return 1
+  fi
+  sync "$tmp" 2>/dev/null || true
+  if ! mv -f "$tmp" "$DATA_DIR/v2.db"; then
+    log "rollback: DB snapshot rename failed — leaving live DB untouched"
+    rm -f "$tmp"
+    return 1
+  fi
+  rm -f "$DATA_DIR/v2.db-wal" "$DATA_DIR/v2.db-shm"
+  log "rollback: DB restored from snapshot"
+  return 0
+}
+
 rollback() { # reason
   log "ROLLBACK: $1"
   stop_service
   git reset --hard "$LAST_GOOD" >/dev/null 2>&1
-  cp -f "$BACKUP_DIR/v2.db" "$DATA_DIR/v2.db"
-  rm -f "$DATA_DIR/v2.db-wal" "$DATA_DIR/v2.db-shm"
+  restore_db_snapshot || true
   pnpm install --frozen-lockfile >/dev/null 2>&1 || log "rollback: pnpm install warned"
   pnpm run build >/dev/null 2>&1 || log "rollback: build warned"
   if [ "${IMAGE_REBUILT:-0}" = "1" ]; then
@@ -171,6 +199,15 @@ if echo "$DIFF" | grep -qE '^container/'; then
   log "container/ changed — rebuilding agent image"
   if command -v docker >/dev/null 2>&1; then
     docker buildx prune -f >/dev/null 2>&1 || true   # defeat stale COPY cache
+    docker image prune -f >/dev/null 2>&1 || true    # reclaim dangling layers
+    # Preflight free disk: a rebuild that runs out of space aborts mid-layer
+    # and forces a rollback. Bail out cleanly *before* mutating the running
+    # install if there isn't enough headroom to build the ~3GB agent image.
+    MIN_FREE_MB="$(read_env SELF_DEPLOY_MIN_FREE_MB 4096)"
+    AVAIL_MB="$(df -Pk "$DATA_DIR" | awk 'NR==2{print int($4/1024)}')"
+    if [ -n "$AVAIL_MB" ] && [ "$AVAIL_MB" -lt "$MIN_FREE_MB" ]; then
+      rollback "insufficient disk for container rebuild: ${AVAIL_MB}MB free < ${MIN_FREE_MB}MB required (freed build cache + dangling images but still low)"
+    fi
   fi
   if ! ./container/build.sh; then
     rollback "container image rebuild failed"
